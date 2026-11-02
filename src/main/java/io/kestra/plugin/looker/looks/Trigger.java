@@ -102,7 +102,11 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
     @PluginProperty(group = "main")
     private Property<String> lookId;
 
-    @Schema(title = "Field name in the Look result used as watermark for tracking new rows")
+    @Schema(
+        title = "Field name in the Look result used as watermark for tracking new rows",
+        description = """
+            Only rows whose value is strictly greater than the last stored watermark fire the trigger, so a later row with the same value as the last one is skipped. Rows without this field (or with a null value) are ignored. Use a unique, strictly increasing field, such as an id or a high-precision timestamp."""
+    )
     @PluginProperty(group = "processing")
     private Property<String> watermarkField;
 
@@ -117,11 +121,11 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
     @Override
     public Optional<Execution> evaluate(ConditionContext conditionContext, TriggerContext context) throws Exception {
         var runContext = conditionContext.getRunContext();
-        var renderedBaseUrl = runContext.render(this.baseUrl).as(String.class).orElseThrow(() -> new IllegalArgumentException("baseUrl is required"));
-        var renderedClientId = runContext.render(this.clientId).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientId is required"));
-        var renderedClientSecret = runContext.render(this.clientSecret).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientSecret is required"));
-        var renderedLookId = runContext.render(this.lookId).as(String.class).orElseThrow(() -> new IllegalArgumentException("lookId is required"));
-        var renderedWatermarkField = this.watermarkField != null ? runContext.render(this.watermarkField).as(String.class).orElse(null) : null;
+        var rBaseUrl = runContext.render(this.baseUrl).as(String.class).orElseThrow(() -> new IllegalArgumentException("baseUrl is required"));
+        var rClientId = runContext.render(this.clientId).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientId is required"));
+        var rClientSecret = runContext.render(this.clientSecret).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientSecret is required"));
+        var rLookId = runContext.render(this.lookId).as(String.class).orElseThrow(() -> new IllegalArgumentException("lookId is required"));
+        var rWatermarkField = this.watermarkField != null ? runContext.render(this.watermarkField).as(String.class).orElse(null) : null;
 
         Map<String, Object> queryParams = new LinkedHashMap<>();
         if (this.limit != null) {
@@ -132,16 +136,16 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         }
 
         byte[] response;
-        try (var client = new LookerApiClient(runContext, renderedBaseUrl, renderedClientId, renderedClientSecret)) {
-            response = client.request("GET", "/api/4.0/looks/" + LookerApiClient.encodePathSegment(renderedLookId) + "/run/json", queryParams, null);
+        try (var client = new LookerApiClient(runContext, rBaseUrl, rClientId, rClientSecret)) {
+            response = client.request("GET", "/api/4.0/looks/" + LookerApiClient.encodePathSegment(rLookId) + "/run/json", queryParams, null);
         }
 
-        List<Object> rawRows = JacksonMapper.toList(new String(response, StandardCharsets.UTF_8));
+        var rawRows = JacksonMapper.toList(new String(response, StandardCharsets.UTF_8));
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Object row : rawRows) {
             if (row instanceof Map<?, ?> map) {
                 @SuppressWarnings("unchecked")
-                Map<String, Object> typedMap = (Map<String, Object>) map;
+                var typedMap = (Map<String, Object>) map;
                 rows.add(typedMap);
             }
         }
@@ -149,14 +153,14 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         var kv = runContext.namespaceKv(conditionContext.getFlow().getNamespace());
         var stateKey = stateKey(context.getFlowId(), this.getId());
 
-        if (renderedWatermarkField != null && !renderedWatermarkField.isBlank()) {
+        if (rWatermarkField != null && !rWatermarkField.isBlank()) {
             var prevWatermark = kv.getValue(stateKey).map(v -> v.value() != null ? String.valueOf(v.value()) : null).orElse(null);
 
             List<Map<String, Object>> filteredRows = new ArrayList<>();
             Object maxWatermark = null;
 
             for (Map<String, Object> row : rows) {
-                var val = row.get(renderedWatermarkField);
+                var val = row.get(rWatermarkField);
                 if (val != null) {
                     if (prevWatermark == null || compareWatermark(val, prevWatermark) > 0) {
                         filteredRows.add(row);

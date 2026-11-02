@@ -84,14 +84,14 @@ public class SqlRun extends AbstractLookerTask implements RunnableTask<FetchOutp
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
-        String renderedConnectionName = required(runContext.render(this.connectionName).as(String.class).orElse(null), "connectionName");
-        String renderedSql = required(runContext.render(this.sql).as(String.class).orElse(null), "sql");
-        ResultFormat format = runContext.render(this.resultFormat).as(ResultFormat.class).orElse(ResultFormat.JSON);
-        FetchType mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
+        var rConnectionName = required(runContext.render(this.connectionName).as(String.class).orElse(null), "connectionName");
+        var rSql = required(runContext.render(this.sql).as(String.class).orElse(null), "sql");
+        var format = runContext.render(this.resultFormat).as(ResultFormat.class).orElse(ResultFormat.JSON);
+        var mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
 
         Map<String, Object> sqlQuery = new LinkedHashMap<>();
-        sqlQuery.put("connection_name", renderedConnectionName);
-        sqlQuery.put("sql", renderedSql);
+        sqlQuery.put("connection_name", rConnectionName);
+        sqlQuery.put("sql", rSql);
 
         try (var client = this.client(runContext)) {
             byte[] createResponse = client.request(
@@ -99,8 +99,8 @@ public class SqlRun extends AbstractLookerTask implements RunnableTask<FetchOutp
                 "/api/4.0/sql_queries",
                 HttpRequest.JsonRequestBody.of(sqlQuery)
             );
-            String slug = slug(createResponse);
-            String endpoint = "/api/4.0/sql_queries/" + LookerApiClient.encodePathSegment(slug) + "/run/" +
+            var slug = slug(createResponse);
+            var endpoint = "/api/4.0/sql_queries/" + LookerApiClient.encodePathSegment(slug) + "/run/" +
                 format.name().toLowerCase(Locale.ROOT);
             byte[] result = client.request("POST", endpoint, null);
             return LookerQueryResults.output(runContext, mode, format, result, endpoint);

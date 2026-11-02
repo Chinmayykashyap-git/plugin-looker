@@ -1,5 +1,6 @@
 package io.kestra.plugin.looker.looks;
 
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -21,6 +22,7 @@ import io.kestra.plugin.looker.LookerQueryResults;
 import io.kestra.plugin.looker.queries.ResultFormat;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
@@ -37,7 +39,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Run a saved Look in Looker",
-    description = "Executes a saved Look by ID and returns or stores the results. Looker's run-a-Look endpoint has no filter parameter, so when `filters` is set the task fetches the Look, merges the overrides into its query `filters` and runs the merged query inline. Overrides replace the Look's filter for the same field; other filters of the Look are kept."
+    description = "Executes a saved Look by ID and returns or stores the results. Looker's run-a-Look endpoint has no filter parameter, so when `filters` is set the task fetches the Look, merges the overrides into its query `filters` and runs the merged query inline. Overrides replace the entries of the Look's `filters` map for the same field; other filters of the Look are kept. A `filter_expression` saved on the Look (used by Looker for \"or\" and custom filters) is kept as is and still applies. The Look's `filter_config` is cleared, as Looker requires for a modified query."
 )
 @Plugin(
     examples = {
@@ -91,16 +93,16 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
 
     @Schema(
         title = "Filter overrides keyed by Looker field name",
-        description = "Overrides replace the Look's own filter on the same field. When empty, the saved Look is run as is."
+        description = "Overrides replace the entries of the Look's `filters` map for the same field. A `filter_expression` saved on the Look is not replaced and is still ANDed with the overrides. When empty, the saved Look is run as is."
     )
     @PluginProperty(group = "main")
     private Property<Map<String, String>> filters;
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
-        String renderedLookId = runContext.render(this.lookId).as(String.class).orElseThrow(() -> new IllegalArgumentException("lookId is required"));
-        ResultFormat format = runContext.render(this.resultFormat).as(ResultFormat.class).orElse(ResultFormat.JSON);
-        FetchType mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
+        var rLookId = runContext.render(this.lookId).as(String.class).orElseThrow(() -> new IllegalArgumentException("lookId is required"));
+        var format = runContext.render(this.resultFormat).as(ResultFormat.class).orElse(ResultFormat.JSON);
+        var mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
 
         Map<String, Object> queryParams = new LinkedHashMap<>();
         if (this.limit != null) {
@@ -109,23 +111,32 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
         if (this.applyFormatting != null) {
             runContext.render(this.applyFormatting).as(Boolean.class).ifPresent(f -> queryParams.put("apply_formatting", f));
         }
-        Map<String, String> renderedFilters = runContext.render(this.filters).asMap(String.class, String.class);
-        String resultSuffix = format.name().toLowerCase(Locale.ROOT);
-        String lookPath = "/api/4.0/looks/" + LookerApiClient.encodePathSegment(renderedLookId);
+        var rFilters = runContext.render(this.filters).asMap(String.class, String.class);
+        var resultSuffix = format.name().toLowerCase(Locale.ROOT);
+        var lookPath = "/api/4.0/looks/" + LookerApiClient.encodePathSegment(rLookId);
 
         try (var client = this.client(runContext)) {
             String endpoint;
             byte[] response;
-            if (renderedFilters.isEmpty()) {
+            if (rFilters.isEmpty()) {
                 endpoint = lookPath + "/run/" + resultSuffix;
                 response = client.request("GET", endpoint, queryParams, null);
             } else {
                 byte[] look = client.request("GET", lookPath, null);
                 endpoint = "/api/4.0/queries/run/" + resultSuffix;
-                response = client.request("POST", endpoint, queryParams, HttpRequest.JsonRequestBody.of(mergedQuery(look, renderedFilters, renderedLookId)));
+                response = client.request("POST", endpoint, queryParams, jsonBodyKeepingNulls(mergedQuery(look, rFilters, rLookId)));
             }
             return LookerQueryResults.output(runContext, mode, format, response, endpoint);
         }
+    }
+
+    // The shared Kestra JSON mapper drops null values, but filter_config must be sent as an explicit null
+    private static HttpRequest.RequestBody jsonBodyKeepingNulls(Map<String, Object> body) throws Exception {
+        return HttpRequest.StringRequestBody.builder()
+            .contentType("application/json")
+            .charset(StandardCharsets.UTF_8)
+            .content(new ObjectMapper().writeValueAsString(body))
+            .build();
     }
 
     private static Map<String, Object> mergedQuery(byte[] look, Map<String, String> overrides, String lookId) throws Exception {
@@ -136,6 +147,8 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
 
         Map<String, Object> body = new LinkedHashMap<>(JacksonMapper.toMap(query));
         body.keySet().removeAll(READ_ONLY_QUERY_FIELDS);
+        // Looker requires filter_config to be null when a query is modified, any other value can cause unexpected filtering
+        body.put("filter_config", null);
 
         Map<String, Object> mergedFilters = new LinkedHashMap<>();
         if (body.get("filters") instanceof Map<?, ?> existing) {

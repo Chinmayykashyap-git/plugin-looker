@@ -116,9 +116,9 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String renderedDashboardId = this.dashboardId != null ? runContext.render(this.dashboardId).as(String.class).orElse(null) : null;
-        String renderedLookId = this.lookId != null ? runContext.render(this.lookId).as(String.class).orElse(null) : null;
-        if ((renderedDashboardId == null || renderedDashboardId.isBlank()) == (renderedLookId == null || renderedLookId.isBlank())) {
+        var rDashboardId = this.dashboardId != null ? runContext.render(this.dashboardId).as(String.class).orElse(null) : null;
+        var rLookId = this.lookId != null ? runContext.render(this.lookId).as(String.class).orElse(null) : null;
+        if ((rDashboardId == null || rDashboardId.isBlank()) == (rLookId == null || rLookId.isBlank())) {
             throw new IllegalArgumentException("Exactly one of 'dashboardId' or 'lookId' must be provided.");
         }
         RenderFormat renderFormat = runContext.render(this.format).as(RenderFormat.class).orElse(RenderFormat.PDF);
@@ -142,18 +142,18 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
             runContext.render(this.dashboardFilters).as(String.class).ifPresent(f -> body.put("dashboard_filters", f));
         }
 
-        String formatStr = renderFormat.name().toLowerCase(Locale.ROOT);
-        boolean useDashboard = renderedDashboardId != null && !renderedDashboardId.isBlank();
-        String renderType = useDashboard ? "dashboards" : "looks";
-        String renderId = useDashboard ? renderedDashboardId : renderedLookId;
-        String createEndpoint = "/api/4.0/render_tasks/" + renderType + "/" + LookerApiClient.encodePathSegment(renderId) + "/" + formatStr;
+        var formatStr = renderFormat.name().toLowerCase(Locale.ROOT);
+        var useDashboard = rDashboardId != null && !rDashboardId.isBlank();
+        var renderType = useDashboard ? "dashboards" : "looks";
+        var renderId = useDashboard ? rDashboardId : rLookId;
+        var createEndpoint = "/api/4.0/render_tasks/" + renderType + "/" + LookerApiClient.encodePathSegment(renderId) + "/" + formatStr;
 
         try (var client = this.client(runContext)) {
             byte[] createResponse = client.request("POST", createEndpoint, HttpRequest.JsonRequestBody.of(body));
-            String taskId = parseTaskId(createResponse);
+            var taskId = parseTaskId(createResponse);
 
             Instant deadline = Instant.now().plus(maxTimeout);
-            String taskStatusEndpoint = "/api/4.0/render_tasks/" + LookerApiClient.encodePathSegment(taskId);
+            var taskStatusEndpoint = "/api/4.0/render_tasks/" + LookerApiClient.encodePathSegment(taskId);
 
             while (!this.killed.get()) {
                 if (Instant.now().isAfter(deadline)) {
@@ -161,7 +161,7 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
                 }
 
                 byte[] statusResponse = client.request("GET", taskStatusEndpoint, null);
-                String status = parseTaskStatus(statusResponse);
+                var status = parseTaskStatus(statusResponse);
 
                 if ("success".equalsIgnoreCase(status)) {
                     break;
@@ -178,7 +178,7 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
             }
 
             byte[] resultBytes = client.request("GET", "/api/4.0/render_tasks/" + LookerApiClient.encodePathSegment(taskId) + "/results", null);
-            String extension = switch (renderFormat) {
+            var extension = switch (renderFormat) {
                 case PDF -> ".pdf";
                 case PNG -> ".png";
                 case JPG -> ".jpg";

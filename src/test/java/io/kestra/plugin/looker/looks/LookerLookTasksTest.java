@@ -79,7 +79,9 @@ class LookerLookTasksTest {
             .withHeader("Authorization", equalTo("token " + TOKEN))
             .willReturn(aResponse().withStatus(200).withBody("""
                 {"id":"42","query":{"id":"9","slug":"abc","client_id":"c","can":{"run":true},"model":"shop","view":"orders",
-                 "fields":["orders.id"],"filters":{"orders.status":"pending","orders.region":"EU"},"sorts":["orders.id"],"limit":"500"}}
+                 "fields":["orders.id"],"filters":{"orders.status":"pending","orders.region":"EU"},"sorts":["orders.id"],"limit":"500",
+                 "filter_expression":"matches_filter(${orders.region}, `EU,US`)",
+                 "filter_config":{"orders.status":[{"type":"is","values":[{"constant":"pending"},{}]}]}}}
                 """)));
         stubFor(post(urlPathEqualTo("/api/4.0/queries/run/json"))
             .withHeader("Authorization", equalTo("token " + TOKEN))
@@ -102,7 +104,8 @@ class LookerLookTasksTest {
             .withQueryParam("limit", equalTo("100"))
             .withRequestBody(equalToJson("""
                 {"model":"shop","view":"orders","fields":["orders.id"],
-                 "filters":{"orders.status":"shipped","orders.region":"EU"},"sorts":["orders.id"],"limit":"500"}
+                 "filters":{"orders.status":"shipped","orders.region":"EU"},"sorts":["orders.id"],"limit":"500",
+                 "filter_expression":"matches_filter(${orders.region}, `EU,US`)","filter_config":null}
                 """)));
     }
 

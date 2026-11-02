@@ -84,28 +84,28 @@ public class Deploy extends AbstractLookerTask implements RunnableTask<Deploy.Ou
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String renderedProjectId = runContext.render(this.projectId).as(String.class).orElseThrow(() -> new IllegalArgumentException("projectId is required"));
-        String renderedBranch = this.branch != null ? runContext.render(this.branch).as(String.class).orElse(null) : null;
-        String renderedRef = this.ref != null ? runContext.render(this.ref).as(String.class).orElse(null) : null;
+        var rProjectId = runContext.render(this.projectId).as(String.class).orElseThrow(() -> new IllegalArgumentException("projectId is required"));
+        var rBranch = this.branch != null ? runContext.render(this.branch).as(String.class).orElse(null) : null;
+        var rRef = this.ref != null ? runContext.render(this.ref).as(String.class).orElse(null) : null;
 
         Map<String, Object> queryParams = new LinkedHashMap<>();
-        if (renderedBranch != null && !renderedBranch.isBlank()) {
-            queryParams.put("branch", renderedBranch);
+        if (rBranch != null && !rBranch.isBlank()) {
+            queryParams.put("branch", rBranch);
         }
-        if (renderedRef != null && !renderedRef.isBlank()) {
-            queryParams.put("ref", renderedRef);
+        if (rRef != null && !rRef.isBlank()) {
+            queryParams.put("ref", rRef);
         }
 
         String endpoint;
         if (!queryParams.isEmpty()) {
-            endpoint = "/api/4.0/projects/" + LookerApiClient.encodePathSegment(renderedProjectId) + "/deploy_ref_to_production";
+            endpoint = "/api/4.0/projects/" + LookerApiClient.encodePathSegment(rProjectId) + "/deploy_ref_to_production";
         } else {
-            endpoint = "/api/4.0/projects/" + LookerApiClient.encodePathSegment(renderedProjectId) + "/deploy_to_production";
+            endpoint = "/api/4.0/projects/" + LookerApiClient.encodePathSegment(rProjectId) + "/deploy_to_production";
         }
 
         try (var client = this.client(runContext)) {
             byte[] response = client.request("POST", endpoint, queryParams, null);
-            String result = response != null && response.length > 0 ? new String(response, StandardCharsets.UTF_8) : "deployed";
+            var result = response != null && response.length > 0 ? new String(response, StandardCharsets.UTF_8) : "deployed";
             return Output.builder().result(result).build();
         }
     }

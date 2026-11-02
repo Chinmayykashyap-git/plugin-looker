@@ -67,7 +67,11 @@ public class List extends AbstractLookerTask implements RunnableTask<FetchOutput
     @PluginProperty(group = "main")
     private Property<String> limit;
 
-    @Schema(title = "Filter dashboards by title")
+    @Schema(
+        title = "Filter dashboards by title",
+        description = """
+            The title must match the whole title, case-insensitively. Use `%` as a wildcard, for example `%Sales%` to find "Sales Overview"; `Sales` alone does not match it."""
+    )
     @PluginProperty(group = "main")
     private Property<String> title;
 
@@ -78,7 +82,7 @@ public class List extends AbstractLookerTask implements RunnableTask<FetchOutput
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
-        FetchType mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
+        var mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
 
         Map<String, Object> queryParams = new LinkedHashMap<>();
         if (this.folderId != null) {
@@ -87,9 +91,9 @@ public class List extends AbstractLookerTask implements RunnableTask<FetchOutput
             });
         }
         if (this.fields != null) {
-            java.util.List<String> renderedFields = runContext.render(this.fields).asList(String.class);
-            if (!renderedFields.isEmpty()) {
-                queryParams.put("fields", String.join(",", renderedFields));
+            var rFields = runContext.render(this.fields).asList(String.class);
+            if (!rFields.isEmpty()) {
+                queryParams.put("fields", String.join(",", rFields));
             }
         }
         if (this.limit != null) {
@@ -100,7 +104,7 @@ public class List extends AbstractLookerTask implements RunnableTask<FetchOutput
         }
 
         // The plain list endpoint only accepts `fields`; the search endpoint honors title, folder_id and limit
-        String endpoint = "/api/4.0/dashboards/search";
+        var endpoint = "/api/4.0/dashboards/search";
 
         try (var client = this.client(runContext)) {
             byte[] response = client.request("GET", endpoint, queryParams, null);

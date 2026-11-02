@@ -38,10 +38,10 @@ public abstract class AbstractLookerTask extends Task {
     private Property<String> clientSecret;
 
     protected LookerApiClient client(RunContext runContext) throws Exception {
-        String renderedBaseUrl = runContext.render(this.baseUrl).as(String.class).orElseThrow(() -> new IllegalArgumentException("baseUrl is required"));
-        String renderedClientId = runContext.render(this.clientId).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientId is required"));
-        String renderedClientSecret = runContext.render(this.clientSecret).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientSecret is required"));
+        var rBaseUrl = runContext.render(this.baseUrl).as(String.class).orElseThrow(() -> new IllegalArgumentException("baseUrl is required"));
+        var rClientId = runContext.render(this.clientId).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientId is required"));
+        var rClientSecret = runContext.render(this.clientSecret).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientSecret is required"));
 
-        return new LookerApiClient(runContext, renderedBaseUrl, renderedClientId, renderedClientSecret);
+        return new LookerApiClient(runContext, rBaseUrl, rClientId, rClientSecret);
     }
 }

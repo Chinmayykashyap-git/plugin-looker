@@ -17,7 +17,7 @@ The plugin automatically requests an access token on connection, authorizes all 
 - **`queries.Run`**: Executes an inline Looker model/view query and returns rows or stores results in Kestra storage.
 - **`queries.SqlRun`**: Executes a SQL Runner query against a Looker database connection.
 - **`looks.Run`**: Runs an existing saved Look by ID, with optional filter overrides.
-- **`looks.List`**: Retrieves saved Looks, optionally filtered by folder or title.
+- **`looks.List`**: Retrieves saved Looks, optionally filtered by folder or title (the title is matched exactly, case-insensitively, with `%` as wildcard).
 - **`dashboards.List`**: Retrieves dashboards, optionally filtered by folder or title.
 - **`dashboards.Render`**: Asynchronously renders a dashboard or saved Look to PDF, PNG, or JPG and saves the result to Kestra storage.
 - **`schedules.RunOnce`**: Triggers execution of an existing or ad-hoc scheduled plan.

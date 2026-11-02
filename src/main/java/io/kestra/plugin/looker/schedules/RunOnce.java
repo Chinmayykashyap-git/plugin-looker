@@ -64,25 +64,25 @@ public class RunOnce extends AbstractLookerTask implements RunnableTask<RunOnce.
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String renderedPlanId = this.scheduledPlanId != null ? runContext.render(this.scheduledPlanId).as(String.class).orElse(null) : null;
-        Map<String, Object> renderedPlan = this.scheduledPlan != null ? runContext.render(this.scheduledPlan).asMap(String.class, Object.class) : null;
+        var rPlanId = this.scheduledPlanId != null ? runContext.render(this.scheduledPlanId).as(String.class).orElse(null) : null;
+        var rPlan = this.scheduledPlan != null ? runContext.render(this.scheduledPlan).asMap(String.class, Object.class) : null;
 
-        if ((renderedPlanId == null || renderedPlanId.isBlank()) && (renderedPlan == null || renderedPlan.isEmpty())) {
+        if ((rPlanId == null || rPlanId.isBlank()) && (rPlan == null || rPlan.isEmpty())) {
             throw new IllegalArgumentException("Either 'scheduledPlanId' or 'scheduledPlan' must be provided.");
         }
 
         try (var client = this.client(runContext)) {
             byte[] response;
-            if (renderedPlanId != null && !renderedPlanId.isBlank()) {
-                String endpoint = "/api/4.0/scheduled_plans/" + LookerApiClient.encodePathSegment(renderedPlanId) + "/run_once";
-                HttpRequest.RequestBody body = renderedPlan != null && !renderedPlan.isEmpty() ? HttpRequest.JsonRequestBody.of(renderedPlan) : null;
+            if (rPlanId != null && !rPlanId.isBlank()) {
+                var endpoint = "/api/4.0/scheduled_plans/" + LookerApiClient.encodePathSegment(rPlanId) + "/run_once";
+                HttpRequest.RequestBody body = rPlan != null && !rPlan.isEmpty() ? HttpRequest.JsonRequestBody.of(rPlan) : null;
                 response = client.request("POST", endpoint, body);
             } else {
-                String endpoint = "/api/4.0/scheduled_plans/run_once";
-                response = client.request("POST", endpoint, HttpRequest.JsonRequestBody.of(renderedPlan));
+                var endpoint = "/api/4.0/scheduled_plans/run_once";
+                response = client.request("POST", endpoint, HttpRequest.JsonRequestBody.of(rPlan));
             }
 
-            Map<String, Object> resultMap = parseResult(response);
+            var resultMap = parseResult(response);
             return Output.builder().result(resultMap).build();
         }
     }

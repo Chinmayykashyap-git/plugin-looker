@@ -103,36 +103,36 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
-        String renderedModel = required(runContext.render(this.model).as(String.class).orElse(null), "model");
-        String renderedView = required(runContext.render(this.view).as(String.class).orElse(null), "view");
-        List<String> renderedFields = runContext.render(this.fields).asList(String.class);
-        if (renderedFields.isEmpty()) {
+        var rModel = required(runContext.render(this.model).as(String.class).orElse(null), "model");
+        var rView = required(runContext.render(this.view).as(String.class).orElse(null), "view");
+        var rFields = runContext.render(this.fields).asList(String.class);
+        if (rFields.isEmpty()) {
             throw new IllegalArgumentException("At least one Looker query field must be specified.");
         }
 
         Map<String, Object> query = new LinkedHashMap<>();
-        query.put("model", renderedModel);
-        query.put("view", renderedView);
-        query.put("fields", renderedFields);
+        query.put("model", rModel);
+        query.put("view", rView);
+        query.put("fields", rFields);
 
-        Map<String, String> renderedFilters = runContext.render(this.filters).asMap(String.class, String.class);
-        if (!renderedFilters.isEmpty()) {
-            query.put("filters", renderedFilters);
+        var rFilters = runContext.render(this.filters).asMap(String.class, String.class);
+        if (!rFilters.isEmpty()) {
+            query.put("filters", rFilters);
         }
 
-        List<String> renderedSorts = runContext.render(this.sorts).asList(String.class);
-        if (!renderedSorts.isEmpty()) {
-            query.put("sorts", renderedSorts);
+        var rSorts = runContext.render(this.sorts).asList(String.class);
+        if (!rSorts.isEmpty()) {
+            query.put("sorts", rSorts);
         }
 
-        String renderedLimit = runContext.render(this.limit).as(String.class).orElse(null);
-        if (renderedLimit != null) {
-            query.put("limit", renderedLimit);
+        var rLimit = runContext.render(this.limit).as(String.class).orElse(null);
+        if (rLimit != null) {
+            query.put("limit", rLimit);
         }
 
-        ResultFormat format = runContext.render(this.resultFormat).as(ResultFormat.class).orElse(ResultFormat.JSON);
-        FetchType mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
-        String endpoint = "/api/4.0/queries/run/" + format.name().toLowerCase(Locale.ROOT);
+        var format = runContext.render(this.resultFormat).as(ResultFormat.class).orElse(ResultFormat.JSON);
+        var mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
+        var endpoint = "/api/4.0/queries/run/" + format.name().toLowerCase(Locale.ROOT);
 
         try (var client = this.client(runContext)) {
             byte[] response = client.request(
