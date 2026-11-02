@@ -1,8 +1,6 @@
 package io.kestra.plugin.looker.queries;
 
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -20,6 +18,7 @@ import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.looker.AbstractLookerTask;
+import io.kestra.plugin.looker.LookerApiClient;
 import io.kestra.plugin.looker.LookerQueryResults;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -101,7 +100,7 @@ public class SqlRun extends AbstractLookerTask implements RunnableTask<FetchOutp
                 HttpRequest.JsonRequestBody.of(sqlQuery)
             );
             String slug = slug(createResponse);
-            String endpoint = "/api/4.0/sql_queries/" + URLEncoder.encode(slug, StandardCharsets.UTF_8) + "/run/" +
+            String endpoint = "/api/4.0/sql_queries/" + LookerApiClient.encodePathSegment(slug) + "/run/" +
                 format.name().toLowerCase(Locale.ROOT);
             byte[] result = client.request("POST", endpoint, null);
             return LookerQueryResults.output(runContext, mode, format, result, endpoint);

@@ -1,12 +1,11 @@
 package io.kestra.plugin.looker.looks;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.StringJoiner;
+import java.util.Set;
 
+import io.kestra.core.http.HttpRequest;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -15,13 +14,16 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.looker.AbstractLookerTask;
 import io.kestra.plugin.looker.LookerApiClient;
 import io.kestra.plugin.looker.LookerQueryResults;
 import io.kestra.plugin.looker.queries.ResultFormat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,7 +37,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Run a saved Look in Looker",
-    description = "Executes a saved Look by ID and returns or stores the results."
+    description = "Executes a saved Look by ID and returns or stores the results. Looker's run-a-Look endpoint has no filter parameter, so when `filters` is set the task fetches the Look, merges the overrides into its query `filters` and runs the merged query inline. Overrides replace the Look's filter for the same field; other filters of the Look are kept."
 )
 @Plugin(
     examples = {
@@ -61,6 +63,9 @@ import lombok.experimental.SuperBuilder;
     }
 )
 public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput> {
+    // Read-only (or client-scoped) fields of the Looker Query schema, meaningless when posted back
+    private static final Set<String> READ_ONLY_QUERY_FIELDS = Set.of("id", "slug", "client_id", "share_url", "expanded_share_url", "url", "has_table_calculations", "can");
+
     @NotNull
     @Schema(title = "The ID of the Look to run")
     @PluginProperty(group = "main")
@@ -68,12 +73,12 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
 
     @Schema(title = "The format returned by Looker")
     @PluginProperty(group = "processing")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<ResultFormat> resultFormat = Property.ofValue(ResultFormat.JSON);
 
     @Schema(title = "How to expose or store the query results")
     @PluginProperty(group = "processing")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<FetchType> fetchType = Property.ofValue(FetchType.FETCH);
 
     @Schema(title = "Row limit to apply to the Look run")
@@ -84,7 +89,10 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
     @PluginProperty(group = "processing")
     private Property<Boolean> applyFormatting;
 
-    @Schema(title = "Filter overrides keyed by Looker field name")
+    @Schema(
+        title = "Filter overrides keyed by Looker field name",
+        description = "Overrides replace the Look's own filter on the same field. When empty, the saved Look is run as is."
+    )
     @PluginProperty(group = "main")
     private Property<Map<String, String>> filters;
 
@@ -102,19 +110,39 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
             runContext.render(this.applyFormatting).as(Boolean.class).ifPresent(f -> queryParams.put("apply_formatting", f));
         }
         Map<String, String> renderedFilters = runContext.render(this.filters).asMap(String.class, String.class);
-        if (!renderedFilters.isEmpty()) {
-            StringJoiner filter = new StringJoiner("&");
-            renderedFilters.forEach((field, value) -> filter.add(
-                URLEncoder.encode(field, StandardCharsets.UTF_8) + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8)
-            ));
-            queryParams.put("filter", filter.toString());
-        }
-
-        String endpoint = "/api/4.0/looks/" + LookerApiClient.encodePathSegment(renderedLookId) + "/run/" + format.name().toLowerCase(Locale.ROOT);
+        String resultSuffix = format.name().toLowerCase(Locale.ROOT);
+        String lookPath = "/api/4.0/looks/" + LookerApiClient.encodePathSegment(renderedLookId);
 
         try (var client = this.client(runContext)) {
-            byte[] response = client.request("GET", endpoint, queryParams, null);
+            String endpoint;
+            byte[] response;
+            if (renderedFilters.isEmpty()) {
+                endpoint = lookPath + "/run/" + resultSuffix;
+                response = client.request("GET", endpoint, queryParams, null);
+            } else {
+                byte[] look = client.request("GET", lookPath, null);
+                endpoint = "/api/4.0/queries/run/" + resultSuffix;
+                response = client.request("POST", endpoint, queryParams, HttpRequest.JsonRequestBody.of(mergedQuery(look, renderedFilters, renderedLookId)));
+            }
             return LookerQueryResults.output(runContext, mode, format, response, endpoint);
         }
+    }
+
+    private static Map<String, Object> mergedQuery(byte[] look, Map<String, String> overrides, String lookId) throws Exception {
+        JsonNode query = JacksonMapper.ofJson().readTree(look).get("query");
+        if (query == null || !query.isObject()) {
+            throw new IllegalStateException("Looker Look '%s' has no query, filter overrides cannot be applied.".formatted(lookId));
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>(JacksonMapper.toMap(query));
+        body.keySet().removeAll(READ_ONLY_QUERY_FIELDS);
+
+        Map<String, Object> mergedFilters = new LinkedHashMap<>();
+        if (body.get("filters") instanceof Map<?, ?> existing) {
+            existing.forEach((k, v) -> mergedFilters.put(String.valueOf(k), v));
+        }
+        mergedFilters.putAll(overrides);
+        body.put("filters", mergedFilters);
+        return body;
     }
 }

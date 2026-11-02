@@ -45,7 +45,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Trigger a flow on new Looker Look rows",
-    description = "Periodically executes a saved Look in Looker and triggers executions when new rows are detected using namespace KV watermarking."
+    description = "Periodically executes a saved Look in Looker and triggers executions when new rows are detected using namespace KV watermarking. Without `watermarkField`, a change signature of the result is stored on every poll, including an empty result, so old data returning after an empty Look fires again."
 )
 @Plugin(
     examples = {

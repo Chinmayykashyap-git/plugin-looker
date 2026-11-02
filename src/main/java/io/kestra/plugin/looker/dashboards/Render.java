@@ -143,8 +143,9 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
         }
 
         String formatStr = renderFormat.name().toLowerCase(Locale.ROOT);
-        String renderType = renderedDashboardId != null ? "dashboards" : "looks";
-        String renderId = renderedDashboardId != null ? renderedDashboardId : renderedLookId;
+        boolean useDashboard = renderedDashboardId != null && !renderedDashboardId.isBlank();
+        String renderType = useDashboard ? "dashboards" : "looks";
+        String renderId = useDashboard ? renderedDashboardId : renderedLookId;
         String createEndpoint = "/api/4.0/render_tasks/" + renderType + "/" + LookerApiClient.encodePathSegment(renderId) + "/" + formatStr;
 
         try (var client = this.client(runContext)) {

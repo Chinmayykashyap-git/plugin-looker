@@ -49,7 +49,7 @@ class LookerDashboardTasksTest {
     @Test
     void shouldListDashboards(WireMockRuntimeInfo wireMockRuntimeInfo) throws Exception {
         stubAuthentication();
-        stubFor(get(urlPathEqualTo("/api/4.0/dashboards"))
+        stubFor(get(urlPathEqualTo("/api/4.0/dashboards/search"))
             .withHeader("Authorization", equalTo("token " + TOKEN))
             .willReturn(aResponse().withStatus(200).withBody("""
                 [{"id":"10","title":"Executive Overview"},{"id":"11","title":"Marketing KPI"}]
@@ -61,6 +61,7 @@ class LookerDashboardTasksTest {
             .clientSecret(Property.ofValue("client-secret"))
             .folderId(Property.ofValue("5"))
             .fields(Property.ofValue(java.util.List.of("id", "title")))
+            .limit(Property.ofValue("20"))
             .title(Property.ofValue("Executive Overview"))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
@@ -72,9 +73,11 @@ class LookerDashboardTasksTest {
             Map.of("id", "10", "title", "Executive Overview"),
             Map.of("id", "11", "title", "Marketing KPI")
         );
-        verify(getRequestedFor(urlPathEqualTo("/api/4.0/dashboards"))
+        verify(getRequestedFor(urlPathEqualTo("/api/4.0/dashboards/search"))
             .withHeader("Authorization", equalTo("token " + TOKEN))
             .withQueryParam("folder_id", equalTo("5"))
+            .withQueryParam("limit", equalTo("20"))
+            .withQueryParam("fields", equalTo("id,title"))
             .withQueryParam("title", equalTo("Executive Overview")));
     }
 
@@ -117,6 +120,32 @@ class LookerDashboardTasksTest {
         try (InputStream is = runContext.storage().getFile(output.getUri())) {
             assertThat(is.readAllBytes()).isEqualTo(fakePdfBytes);
         }
+    }
+
+    @Test
+    void shouldRenderLookWhenDashboardIdIsBlank(WireMockRuntimeInfo wireMockRuntimeInfo) throws Exception {
+        stubAuthentication();
+        stubFor(post(urlPathEqualTo("/api/4.0/render_tasks/looks/7/pdf"))
+            .willReturn(aResponse().withStatus(200).withBody("{\"id\":\"render-task-7\",\"status\":\"enqueued\"}")));
+        stubFor(get(urlPathEqualTo("/api/4.0/render_tasks/render-task-7"))
+            .willReturn(aResponse().withStatus(200).withBody("{\"id\":\"render-task-7\",\"status\":\"success\"}")));
+        stubFor(get(urlPathEqualTo("/api/4.0/render_tasks/render-task-7/results"))
+            .willReturn(aResponse().withStatus(200).withBody("%PDF-1.4 look")));
+
+        Render task = Render.builder()
+            .baseUrl(Property.ofValue(wireMockRuntimeInfo.getHttpBaseUrl()))
+            .clientId(Property.ofValue("client-id"))
+            .clientSecret(Property.ofValue("client-secret"))
+            .dashboardId(Property.ofValue(""))
+            .lookId(Property.ofValue("7"))
+            .format(Property.ofValue(RenderFormat.PDF))
+            .pollInterval(Property.ofValue(Duration.ofMillis(50)))
+            .build();
+
+        Render.Output output = task.run(context());
+
+        assertThat(output.getTaskId()).isEqualTo("render-task-7");
+        verify(postRequestedFor(urlPathEqualTo("/api/4.0/render_tasks/looks/7/pdf")));
     }
 
     @Test

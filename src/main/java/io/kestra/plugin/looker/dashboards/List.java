@@ -84,7 +84,6 @@ public class List extends AbstractLookerTask implements RunnableTask<FetchOutput
         if (this.folderId != null) {
             runContext.render(this.folderId).as(String.class).ifPresent(f -> {
                 queryParams.put("folder_id", f);
-                queryParams.put("space_id", f);
             });
         }
         if (this.fields != null) {
@@ -100,7 +99,8 @@ public class List extends AbstractLookerTask implements RunnableTask<FetchOutput
             runContext.render(this.title).as(String.class).ifPresent(t -> queryParams.put("title", t));
         }
 
-        String endpoint = "/api/4.0/dashboards";
+        // The plain list endpoint only accepts `fields`; the search endpoint honors title, folder_id and limit
+        String endpoint = "/api/4.0/dashboards/search";
 
         try (var client = this.client(runContext)) {
             byte[] response = client.request("GET", endpoint, queryParams, null);
