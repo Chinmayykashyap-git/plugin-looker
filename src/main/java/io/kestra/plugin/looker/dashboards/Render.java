@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +23,7 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.looker.AbstractLookerTask;
+import io.kestra.plugin.looker.LookerApiClient;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
@@ -74,7 +76,7 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
 
     @Schema(title = "Output file format")
     @PluginProperty(group = "main")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<RenderFormat> format = Property.ofValue(RenderFormat.PDF);
 
     @Schema(title = "Width of the rendered canvas in pixels")
@@ -99,12 +101,12 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
 
     @Schema(title = "Polling interval while waiting for render completion")
     @PluginProperty(group = "processing")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<Duration> pollInterval = Property.ofValue(Duration.ofSeconds(1));
 
     @Schema(title = "Maximum duration to wait for render completion")
     @PluginProperty(group = "processing")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<Duration> timeout = Property.ofValue(Duration.ofMinutes(5));
 
     @Builder.Default
@@ -143,14 +145,14 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
         String formatStr = renderFormat.name().toLowerCase(Locale.ROOT);
         String renderType = renderedDashboardId != null ? "dashboards" : "looks";
         String renderId = renderedDashboardId != null ? renderedDashboardId : renderedLookId;
-        String createEndpoint = "/api/4.0/render_tasks/" + renderType + "/" + renderId + "/" + formatStr;
+        String createEndpoint = "/api/4.0/render_tasks/" + renderType + "/" + LookerApiClient.encodePathSegment(renderId) + "/" + formatStr;
 
         try (var client = this.client(runContext)) {
             byte[] createResponse = client.request("POST", createEndpoint, HttpRequest.JsonRequestBody.of(body));
             String taskId = parseTaskId(createResponse);
 
             Instant deadline = Instant.now().plus(maxTimeout);
-            String taskStatusEndpoint = "/api/4.0/render_tasks/" + taskId;
+            String taskStatusEndpoint = "/api/4.0/render_tasks/" + LookerApiClient.encodePathSegment(taskId);
 
             while (!this.killed.get()) {
                 if (Instant.now().isAfter(deadline)) {
@@ -174,7 +176,7 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
                 throw new IllegalStateException("Looker dashboard render task was killed.");
             }
 
-            byte[] resultBytes = client.request("GET", "/api/4.0/render_tasks/" + taskId + "/results", null);
+            byte[] resultBytes = client.request("GET", "/api/4.0/render_tasks/" + LookerApiClient.encodePathSegment(taskId) + "/results", null);
             String extension = switch (renderFormat) {
                 case PDF -> ".pdf";
                 case PNG -> ".png";
@@ -200,14 +202,14 @@ public class Render extends AbstractLookerTask implements RunnableTask<Render.Ou
     private void waitForNextPoll(Duration interval, Instant deadline) {
         long intervalMillis = Math.max(100, interval.toMillis());
         long deadlineMillis = Math.max(0, Duration.between(Instant.now(), deadline).toMillis());
-        long remainingNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(Math.min(intervalMillis, deadlineMillis));
+        long remainingNanos = TimeUnit.MILLISECONDS.toNanos(Math.min(intervalMillis, deadlineMillis));
         long nextPoll = System.nanoTime() + remainingNanos;
 
         try {
             while (!this.killed.get() && (remainingNanos = nextPoll - System.nanoTime()) > 0) {
-                java.util.concurrent.TimeUnit.NANOSECONDS.sleep(Math.min(
+                TimeUnit.NANOSECONDS.sleep(Math.min(
                     remainingNanos,
-                    java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(100)
+                    TimeUnit.MILLISECONDS.toNanos(100)
                 ));
             }
         } catch (InterruptedException e) {

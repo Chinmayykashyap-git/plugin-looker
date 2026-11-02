@@ -2,8 +2,10 @@ package io.kestra.plugin.looker;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.StringJoiner;
 
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -20,6 +22,30 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 public final class LookerApiClient implements AutoCloseable {
     private static final String API_PREFIX = "/api/4.0";
+
+    /**
+     * Encodes a user-provided value so it stays a single URL path segment: everything except
+     * RFC 3986 unreserved characters is percent-encoded (including '/', '?', '#' and spaces).
+     * Dot-only segments are rejected because they would be resolved as path traversal.
+     */
+    public static String encodePathSegment(String segment) {
+        if (segment == null || segment.isBlank()) {
+            throw new IllegalArgumentException("A Looker path identifier must not be blank.");
+        }
+        if (".".equals(segment) || "..".equals(segment)) {
+            throw new IllegalArgumentException("'" + segment + "' is not a valid Looker path identifier.");
+        }
+        StringBuilder sb = new StringBuilder();
+        for (byte b : segment.getBytes(StandardCharsets.UTF_8)) {
+            char c = (char) (b & 0xFF);
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~') {
+                sb.append(c);
+            } else {
+                sb.append('%').append(String.format("%02X", b & 0xFF));
+            }
+        }
+        return sb.toString();
+    }
 
     private final HttpClient httpClient;
     private final String baseUrl;
@@ -60,11 +86,11 @@ public final class LookerApiClient implements AutoCloseable {
 
         String fullPath = path;
         if (queryParams != null && !queryParams.isEmpty()) {
-            java.util.StringJoiner joiner = new java.util.StringJoiner("&");
+            StringJoiner joiner = new StringJoiner("&");
             for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
                 if (entry.getValue() != null && !String.valueOf(entry.getValue()).isBlank()) {
-                    joiner.add(java.net.URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8) + "=" +
-                        java.net.URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
+                    joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8) + "=" +
+                        URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
                 }
             }
             String query = joiner.toString();

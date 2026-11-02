@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,12 +116,12 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
 
     @Override
     public Optional<Execution> evaluate(ConditionContext conditionContext, TriggerContext context) throws Exception {
-        RunContext runContext = conditionContext.getRunContext();
-        String renderedBaseUrl = runContext.render(this.baseUrl).as(String.class).orElseThrow();
-        String renderedClientId = runContext.render(this.clientId).as(String.class).orElseThrow();
-        String renderedClientSecret = runContext.render(this.clientSecret).as(String.class).orElseThrow();
-        String renderedLookId = runContext.render(this.lookId).as(String.class).orElseThrow();
-        String renderedWatermarkField = this.watermarkField != null ? runContext.render(this.watermarkField).as(String.class).orElse(null) : null;
+        var runContext = conditionContext.getRunContext();
+        var renderedBaseUrl = runContext.render(this.baseUrl).as(String.class).orElseThrow(() -> new IllegalArgumentException("baseUrl is required"));
+        var renderedClientId = runContext.render(this.clientId).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientId is required"));
+        var renderedClientSecret = runContext.render(this.clientSecret).as(String.class).orElseThrow(() -> new IllegalArgumentException("clientSecret is required"));
+        var renderedLookId = runContext.render(this.lookId).as(String.class).orElseThrow(() -> new IllegalArgumentException("lookId is required"));
+        var renderedWatermarkField = this.watermarkField != null ? runContext.render(this.watermarkField).as(String.class).orElse(null) : null;
 
         Map<String, Object> queryParams = new LinkedHashMap<>();
         if (this.limit != null) {
@@ -131,8 +132,8 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         }
 
         byte[] response;
-        try (LookerApiClient client = new LookerApiClient(runContext, renderedBaseUrl, renderedClientId, renderedClientSecret)) {
-            response = client.request("GET", "/api/4.0/looks/" + renderedLookId + "/run/json", queryParams, null);
+        try (var client = new LookerApiClient(runContext, renderedBaseUrl, renderedClientId, renderedClientSecret)) {
+            response = client.request("GET", "/api/4.0/looks/" + LookerApiClient.encodePathSegment(renderedLookId) + "/run/json", queryParams, null);
         }
 
         List<Object> rawRows = JacksonMapper.toList(new String(response, StandardCharsets.UTF_8));
@@ -145,22 +146,17 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             }
         }
 
-        if (rows.isEmpty()) {
-            return Optional.empty();
-        }
-
         var kv = runContext.namespaceKv(conditionContext.getFlow().getNamespace());
-        String stateKey = "looker_trigger_" + (this.getId() != null ? this.getId() : "look_" + renderedLookId);
+        var stateKey = stateKey(context.getFlowId(), this.getId());
 
         if (renderedWatermarkField != null && !renderedWatermarkField.isBlank()) {
-            Optional<io.kestra.core.storages.kv.KVValue> prevWatermarkOpt = kv.getValue(stateKey);
-            String prevWatermark = prevWatermarkOpt.map(v -> v.value() != null ? String.valueOf(v.value()) : null).orElse(null);
+            var prevWatermark = kv.getValue(stateKey).map(v -> v.value() != null ? String.valueOf(v.value()) : null).orElse(null);
 
             List<Map<String, Object>> filteredRows = new ArrayList<>();
             Object maxWatermark = null;
 
             for (Map<String, Object> row : rows) {
-                Object val = row.get(renderedWatermarkField);
+                var val = row.get(renderedWatermarkField);
                 if (val != null) {
                     if (prevWatermark == null || compareWatermark(val, prevWatermark) > 0) {
                         filteredRows.add(row);
@@ -171,30 +167,36 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
                 }
             }
 
-            if (filteredRows.isEmpty() || maxWatermark == null) {
+            // Advance the watermark on every successful poll, not only when firing
+            var nextWatermark = maxWatermark != null ? String.valueOf(maxWatermark) : prevWatermark;
+            if (nextWatermark != null) {
+                kv.put(stateKey, new KVValueAndMetadata(new KVMetadata("looker watermark", (Duration) null), nextWatermark));
+            }
+
+            if (filteredRows.isEmpty()) {
                 return Optional.empty();
             }
 
-            kv.put(stateKey, new KVValueAndMetadata(new KVMetadata("looker watermark", (Duration) null), String.valueOf(maxWatermark)));
-
-            FetchOutput output = FetchOutput.builder()
+            var output = FetchOutput.builder()
                 .rows(new ArrayList<>(filteredRows))
                 .size((long) filteredRows.size())
                 .build();
 
             return Optional.of(TriggerService.generateExecution(this, conditionContext, context, output));
         } else {
-            String currentSignature = hash(response);
-            Optional<io.kestra.core.storages.kv.KVValue> prevSignatureOpt = kv.getValue(stateKey);
-            String prevSignature = prevSignatureOpt.map(v -> v.value() != null ? String.valueOf(v.value()) : null).orElse(null);
+            var currentSignature = hash(response);
+            var prevSignature = kv.getValue(stateKey).map(v -> v.value() != null ? String.valueOf(v.value()) : null).orElse(null);
 
-            if (currentSignature.equals(prevSignature)) {
+            // Always record the latest signature, so an empty result is remembered and a later return of old data fires again
+            if (!currentSignature.equals(prevSignature)) {
+                kv.put(stateKey, new KVValueAndMetadata(new KVMetadata("looker signature", (Duration) null), currentSignature));
+            }
+
+            if (currentSignature.equals(prevSignature) || rows.isEmpty()) {
                 return Optional.empty();
             }
 
-            kv.put(stateKey, new KVValueAndMetadata(new KVMetadata("looker signature", (Duration) null), currentSignature));
-
-            FetchOutput output = FetchOutput.builder()
+            var output = FetchOutput.builder()
                 .rows(new ArrayList<>(rows))
                 .size((long) rows.size())
                 .build();
@@ -203,15 +205,14 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         }
     }
 
+    // Length-prefixed segments so ("ab", "c") and ("a", "bc") cannot collide
+    static String stateKey(String flowId, String triggerId) {
+        return "looker_wm_" + flowId.length() + "_" + flowId + "_" + triggerId.length() + "_" + triggerId;
+    }
+
     private static String hash(byte[] bytes) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(bytes);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("Cannot calculate the Looker trigger result signature.", e);
         }

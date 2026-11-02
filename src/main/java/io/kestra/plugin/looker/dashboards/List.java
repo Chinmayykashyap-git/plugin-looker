@@ -20,6 +20,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import lombok.Builder;
 import lombok.experimental.SuperBuilder;
 
 @SuperBuilder
@@ -72,7 +73,7 @@ public class List extends AbstractLookerTask implements RunnableTask<FetchOutput
 
     @Schema(title = "How to expose or store the results")
     @PluginProperty(group = "processing")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<FetchType> fetchType = Property.ofValue(FetchType.FETCH);
 
     @Override

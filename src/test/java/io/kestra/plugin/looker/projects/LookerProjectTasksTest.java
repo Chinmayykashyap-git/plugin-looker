@@ -76,6 +76,28 @@ class LookerProjectTasksTest {
             .withHeader("Authorization", equalTo("token " + TOKEN)));
     }
 
+    @Test
+    void shouldEncodeProjectIdPathSegment(WireMockRuntimeInfo wireMockRuntimeInfo) throws Exception {
+        stubAuthentication();
+        stubFor(post(urlPathEqualTo("/api/4.0/projects/..%2Fx/deploy_to_production"))
+            .willReturn(aResponse().withStatus(200).withBody("{}")));
+        stubFor(post(urlPathEqualTo("/api/4.0/projects/p%3Fx%3D/deploy_to_production"))
+            .willReturn(aResponse().withStatus(200).withBody("{}")));
+
+        for (String id : new String[]{"../x", "p?x="}) {
+            Deploy.builder()
+                .baseUrl(Property.ofValue(wireMockRuntimeInfo.getHttpBaseUrl()))
+                .clientId(Property.ofValue("client-id"))
+                .clientSecret(Property.ofValue("client-secret"))
+                .projectId(Property.ofValue(id))
+                .build()
+                .run(context());
+        }
+
+        verify(postRequestedFor(urlEqualTo("/api/4.0/projects/..%2Fx/deploy_to_production")));
+        verify(postRequestedFor(urlEqualTo("/api/4.0/projects/p%3Fx%3D/deploy_to_production")));
+    }
+
     private RunContext context() {
         return this.runContextFactory.of("looker-project-test");
     }

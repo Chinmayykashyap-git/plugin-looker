@@ -50,7 +50,7 @@ public final class LookerQueryResults {
         FetchOutput.FetchOutputBuilder output = FetchOutput.builder().size((long) rows.size());
         if (fetchType == FetchType.FETCH_ONE) {
             return output
-                .row(rows.isEmpty() ? null : JacksonMapper.toMap(rows.get(0)))
+                .row(rows.isEmpty() ? null : JacksonMapper.toMap(rows.getFirst()))
                 .build();
         }
 

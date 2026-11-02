@@ -11,6 +11,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.looker.AbstractLookerTask;
+import io.kestra.plugin.looker.LookerApiClient;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -83,7 +84,7 @@ public class Deploy extends AbstractLookerTask implements RunnableTask<Deploy.Ou
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String renderedProjectId = runContext.render(this.projectId).as(String.class).orElseThrow();
+        String renderedProjectId = runContext.render(this.projectId).as(String.class).orElseThrow(() -> new IllegalArgumentException("projectId is required"));
         String renderedBranch = this.branch != null ? runContext.render(this.branch).as(String.class).orElse(null) : null;
         String renderedRef = this.ref != null ? runContext.render(this.ref).as(String.class).orElse(null) : null;
 
@@ -97,9 +98,9 @@ public class Deploy extends AbstractLookerTask implements RunnableTask<Deploy.Ou
 
         String endpoint;
         if (!queryParams.isEmpty()) {
-            endpoint = "/api/4.0/projects/" + renderedProjectId + "/deploy_ref_to_production";
+            endpoint = "/api/4.0/projects/" + LookerApiClient.encodePathSegment(renderedProjectId) + "/deploy_ref_to_production";
         } else {
-            endpoint = "/api/4.0/projects/" + renderedProjectId + "/deploy_to_production";
+            endpoint = "/api/4.0/projects/" + LookerApiClient.encodePathSegment(renderedProjectId) + "/deploy_to_production";
         }
 
         try (var client = this.client(runContext)) {

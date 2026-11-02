@@ -23,6 +23,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import lombok.Builder;
 import lombok.experimental.SuperBuilder;
 
 @SuperBuilder
@@ -92,12 +93,12 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
 
     @Schema(title = "The format returned by Looker")
     @PluginProperty(group = "processing")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<ResultFormat> resultFormat = Property.ofValue(ResultFormat.JSON);
 
     @Schema(title = "How to expose or store the query results")
     @PluginProperty(group = "processing")
-    @lombok.Builder.Default
+    @Builder.Default
     private Property<FetchType> fetchType = Property.ofValue(FetchType.FETCH);
 
     @Override

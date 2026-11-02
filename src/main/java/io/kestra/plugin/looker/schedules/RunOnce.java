@@ -14,6 +14,7 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.looker.AbstractLookerTask;
+import io.kestra.plugin.looker.LookerApiClient;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
@@ -73,7 +74,7 @@ public class RunOnce extends AbstractLookerTask implements RunnableTask<RunOnce.
         try (var client = this.client(runContext)) {
             byte[] response;
             if (renderedPlanId != null && !renderedPlanId.isBlank()) {
-                String endpoint = "/api/4.0/scheduled_plans/" + renderedPlanId + "/run_once";
+                String endpoint = "/api/4.0/scheduled_plans/" + LookerApiClient.encodePathSegment(renderedPlanId) + "/run_once";
                 HttpRequest.RequestBody body = renderedPlan != null && !renderedPlan.isEmpty() ? HttpRequest.JsonRequestBody.of(renderedPlan) : null;
                 response = client.request("POST", endpoint, body);
             } else {

@@ -16,6 +16,7 @@ import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.looker.AbstractLookerTask;
+import io.kestra.plugin.looker.LookerApiClient;
 import io.kestra.plugin.looker.LookerQueryResults;
 import io.kestra.plugin.looker.queries.ResultFormat;
 
@@ -89,7 +90,7 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
-        String renderedLookId = runContext.render(this.lookId).as(String.class).orElseThrow();
+        String renderedLookId = runContext.render(this.lookId).as(String.class).orElseThrow(() -> new IllegalArgumentException("lookId is required"));
         ResultFormat format = runContext.render(this.resultFormat).as(ResultFormat.class).orElse(ResultFormat.JSON);
         FetchType mode = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.FETCH);
 
@@ -109,7 +110,7 @@ public class Run extends AbstractLookerTask implements RunnableTask<FetchOutput>
             queryParams.put("filter", filter.toString());
         }
 
-        String endpoint = "/api/4.0/looks/" + renderedLookId + "/run/" + format.name().toLowerCase(Locale.ROOT);
+        String endpoint = "/api/4.0/looks/" + LookerApiClient.encodePathSegment(renderedLookId) + "/run/" + format.name().toLowerCase(Locale.ROOT);
 
         try (var client = this.client(runContext)) {
             byte[] response = client.request("GET", endpoint, queryParams, null);

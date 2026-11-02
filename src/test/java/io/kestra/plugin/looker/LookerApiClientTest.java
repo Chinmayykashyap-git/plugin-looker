@@ -38,6 +38,15 @@ class LookerApiClientTest {
     private TestRunContextFactory runContextFactory;
 
     @Test
+    void shouldEncodePathSegments() {
+        assertThat(LookerApiClient.encodePathSegment("../x")).isEqualTo("..%2Fx");
+        assertThat(LookerApiClient.encodePathSegment("a?x=#b c")).isEqualTo("a%3Fx%3D%23b%20c");
+        assertThat(LookerApiClient.encodePathSegment("look_1-2.v~")).isEqualTo("look_1-2.v~");
+        assertThatThrownBy(() -> LookerApiClient.encodePathSegment("..")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> LookerApiClient.encodePathSegment(" ")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void shouldLoginWithFormCredentials(WireMockRuntimeInfo wireMockRuntimeInfo) throws Exception {
         stubFor(post(urlPathEqualTo(LOGIN_PATH))
             .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("""
